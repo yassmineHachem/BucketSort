@@ -1,0 +1,76 @@
+#include <omp.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+
+#define NUM_BUCKETS 5
+#define ARRAY_SIZE 100
+#define MAX_RANDOM_VALUE 1000
+
+typedef struct {
+    int* elements;
+    int size;
+} Bucket;
+
+Bucket buckets[NUM_BUCKETS];
+int globalArray[ARRAY_SIZE];
+
+void initializeArray(int* array, int size, int maxValue) {
+    srand(time(NULL));
+    for (int i = 0; i < size; i++) {
+        array[i] = rand() % maxValue;
+    }
+}
+
+void initializeBuckets(Bucket* buckets, int numBuckets, int arraySize) {
+    for (int i = 0; i < numBuckets; i++) {
+        int bucketSize = (arraySize / numBuckets) + ((i < arraySize % numBuckets) ? 1 : 0);
+        buckets[i].elements = (int*)malloc(bucketSize * sizeof(int));
+        buckets[i].size = 0;
+    }
+}
+
+void distributeToBuckets(int* array, Bucket* buckets, int arraySize, int numBuckets) {
+    for (int i = 0; i < arraySize; i++) {
+        int bucketIndex = array[i] % numBuckets;
+        buckets[bucketIndex].elements[buckets[bucketIndex].size++] = array[i];
+    }
+}
+
+int compareIntegers(const void* a, const void* b) {
+    return (*(int*)a - *(int*)b);
+}
+
+void sortBuckets(Bucket* buckets, int numBuckets) {
+    #pragma omp parallel for
+    for (int i = 0; i < numBuckets; i++) {
+        qsort(buckets[i].elements, buckets[i].size, sizeof(int), compareIntegers);
+    }
+}
+
+void mergeBuckets(Bucket* buckets, int* array, int numBuckets) {
+    int index = 0;
+    for (int i = 0; i < numBuckets; i++) {
+        for (int j = 0; j < buckets[i].size; j++) {
+            array[index++] = buckets[i].elements[j];
+        }
+        free(buckets[i].elements);
+    }
+}
+
+int main() {
+    initializeArray(globalArray, ARRAY_SIZE, MAX_RANDOM_VALUE);
+    initializeBuckets(buckets, NUM_BUCKETS, ARRAY_SIZE);
+    distributeToBuckets(globalArray, buckets, ARRAY_SIZE, NUM_BUCKETS);
+
+    double startTime = omp_get_wtime();
+    sortBuckets(buckets, NUM_BUCKETS);
+    double endTime = omp_get_wtime();
+    double executionTime = endTime - startTime;
+
+    mergeBuckets(buckets, globalArray, NUM_BUCKETS);
+
+    printf("Total Execution Time: %.6f seconds\n", executionTime);
+
+    return 0;
+}
